@@ -225,3 +225,108 @@ export class UniformList extends List {
     );
   }
 }
+
+export class QuantizedHeightList extends List {
+  static propTypes = {
+    initialIndex: React.PropTypes.number,
+    itemRenderer: React.PropTypes.func,
+    itemsRenderer: React.PropTypes.func,
+    seek: React.PropTypes.func,
+    seekedData: React.PropTypes.array,
+    seekedOffset: React.PropTypes.number,
+    seekThreshold: React.PropTypes.number,
+    threshold: React.PropTypes.number,
+    totalHeight: React.PropTypes.number,
+    unitSize: React.PropTypes.number
+  };
+
+  static defaultProps = {
+    itemRenderer: (i, j) => <div key={j}>{i}</div>,
+    itemsRenderer: (items, ref) => <div ref={ref}>{items}</div>,
+    length: 0,
+    seekedData: [], // (immutable, so its reuse does not matter)
+    seekedOffset: 0,
+    seekThreshold: 100,
+    threshold: 500,
+    unitSize: 40
+  };
+
+  state = {
+  };
+
+  scrollTo(unitOffset) {
+    this.setScroll(this.getSpace(unitOffset));
+  }
+
+  componentDidUpdate() {
+  }
+
+  updateFrame(event) {
+    const {totalHeight, threshold, unitSize} = this.props;
+    const scroll = this.getScroll();
+
+    // If this was a scroll event and we haven't scrolled far enough since our
+    // last seek, then don't issue a new seek.
+    if (event && event.type === 'scroll' &&
+        this._lastScroll &&
+        Math.abs(scroll - this._lastScroll) < this.props.seekThreshold) {
+      return;
+    }
+    console.log('event.type', event && event.type, '_lastScroll',
+            this._lastScroll, 'new scroll', scroll);
+    this._lastScroll = scroll;
+
+    const top = Math.max(0, scroll - threshold);
+
+    const viewportHeight = this.getViewportHeight();
+
+    const maxOffset = Math.max(0, totalHeight - 1);
+
+    const firstOffset =
+      Math.min(maxOffset,
+               Math.floor(top / unitSize));
+    const firstVisibleOffset =
+      Math.min(maxOffset,
+               Math.floor(scroll / unitSize));
+    const lastVisibleOffset =
+      Math.min(maxOffset,
+               Math.ceil((scroll + viewportHeight) / unitSize));
+    const lastOffset =
+      Math.min(maxOffset,
+               Math.ceil((top + viewportHeight + threshold) / unitSize));
+    this.props.seek(
+      firstOffset,
+      firstVisibleOffset - firstOffset,
+      lastVisibleOffset - firstVisibleOffset,
+      lastOffset - lastVisibleOffset
+    );
+  }
+
+  getSpace(unitOffset) {
+    return unitOffset * this.props.unitSize;
+  }
+
+  render() {
+    if (!this.props.seekedData) {
+      return <div></div>;
+    }
+
+    const {unitSize} = this.props;
+    const items = this.props.seekedData.map((item, i) => {
+      return this.props.itemRenderer(item, i, unitSize);
+    });
+    const container = this.props.itemsRenderer(items, c => this.items = c);
+
+    const transform =
+      `translate(0, ${this.getSpace(this.props.seekedOffset)}px)`;
+    return (
+      <div
+        style={{position: 'relative', height: this.getSpace(this.props.totalHeight)}}
+      >
+        <div style={{WebkitTransform: transform, transform}}>
+          {container}
+        </div>
+      </div>
+    );
+  }
+}

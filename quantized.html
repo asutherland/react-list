@@ -1,0 +1,199 @@
+<!doctype html>
+
+<html>
+  <head>
+    <title>react-list quantized height list</title>
+    <meta charset="UTF-8">
+    <script src='bower_components/react/react-with-addons.js'></script>
+    <script src='react-list.js'></script>
+    <script src='http://localhost:35729/livereload.js'></script>
+    <style>
+    body {
+      text-align: center;
+      margin: 0;
+      font-family: 'Helvetica Neue', sans-serif;
+    }
+
+    a {
+      color: #38afd4;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0;
+    }
+
+    .zebra {
+      background: #efefef;
+    }
+
+    td {
+      padding: 5px;
+      height: 20px;
+      overflow: hidden;
+    }
+
+    #contained-uniform,
+    #contained-variable {
+      margin: 10px auto;
+      border: 10px solid red;
+      width: 50%;
+      height: 400px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    </style>
+  </head>
+
+  <body>
+    <h1>QuantizedHeightList</h1>
+
+    <h2>Contained Uniform</h2>
+    <div id='quantized-height'></div>
+
+    <script>
+      'use strict';
+
+      var roundRand = function(highExclusive) {
+        return Math.floor(Math.random() * highExclusive);
+      };
+
+      var allItems;
+      var totalHeight;
+      var populateItems = function(count) {
+        allItems = [];
+        totalHeight = 0;
+        for (var i = 0; i < count; i++) {
+          var height = 1 + roundRand(4);
+          totalHeight += height;
+          allItems.push({
+            index: i,
+            height: height,
+            loaded: false
+          });
+        }
+      };
+      populateItems(100);
+
+      // Find the index covering the given offset
+      var findIndexForOffset = function(desiredOffset) {
+        var curOffset = 0;
+        for (var i = 0; i < allItems.length; i++) {
+          if (desiredOffset <= curOffset) {
+            break;
+          }
+          curOffset += allItems[i].height;
+        }
+        return i;
+      };
+
+      // Find the start offset of the item at the given index.
+      var findOffsetForIndex = function(index) {
+        var curOffset = 0;
+        index = Math.min(allItems.length - 1, index);
+        for (var i = 0; i < index; i++) {
+          curOffset += allItems[i].height;
+        }
+        return curOffset;
+      }
+
+
+      // Number of milliseconds to pretend it takes all seek requests to be
+      // processed.
+      var SEEK_DELAY_MS = 1000;
+
+      // Number of milliseconds to pretend it takes loading to take.  Only items
+      // in the visible region have loading triggered.
+      var LOAD_DELAY_MS = 2000;
+
+      var UNIT_SIZE_PX = 20;
+
+      var everLoaded = false;
+
+      // This state is persisted so that the fake-loading mechanism can
+      // re-assert the most recent state.
+      var seekedOffset;
+      var seekedData;
+      // Track the generation number of our list's state.  Any mutation is a new
+      // generation, which allows prop equivalence to know that something has
+      // changed.  You would usually want to combine this with per-item
+      // generations, having the parent component of the QuantizedHeightList
+      // pass the item generation as a prop, and a smart shouldComponentUpdate
+      // implementation for the items that checks the old generation prop
+      // against the new one.
+      var generation = 0;
+
+      var seekRequest = function(offset, before, visible, after) {
+        console.log('seekRequest:', offset, before, visible, after);
+        setTimeout(function() {
+          everLoaded = true;
+
+          var firstBuffered = findIndexForOffset(offset);
+          var firstVisible = findIndexForOffset(offset + before);
+          var lastVisible = findIndexForOffset(offset + before + visible);
+          var lastBuffered = findIndexForOffset(offset + before + visible +
+                                                after);
+
+          var loadThese = allItems.slice(firstVisible, lastVisible + 1);
+          setTimeout(function() {
+            var loadedAnything = false;
+            loadThese.forEach(function(item) {
+              if (!item.loaded) {
+                item.loaded = true;
+                loadedAnything = true;
+              }
+            });
+
+            if (loadedAnything) {
+              generation++;
+              seekDoneUpdateList('loaded');
+            }
+          }, LOAD_DELAY_MS);
+
+          console.log('seeked:', firstBuffered, firstVisible, lastVisible,
+                      lastBuffered);
+          seekedOffset = findOffsetForIndex(firstBuffered);
+          seekedData = allItems.slice(firstBuffered, lastBuffered + 1);
+          generation++;
+          seekDoneUpdateList('seek');
+        }, everLoaded ? SEEK_DELAY_MS : 0);
+      };
+
+      var renderItem = function (item, relIndex, unitSize) {
+        return React.createElement('div', {
+          key: item.index,
+          className: item.index % 2 ? null : 'zebra',
+          style: { height: unitSize * item.height}
+        },
+        (item.loaded ? 'Loaded' : 'LOADING') + ' variable height item #' +
+          item.index);
+      };
+
+      var factory = React.createFactory(reactList.QuantizedHeightList);
+      var seekDoneUpdateList = function(why) {
+        console.log('updating list props because', why,
+                    'generation:', generation,
+                    'seekedOffset:', seekedOffset);
+        React.render(factory({
+          seek: seekRequest,
+          itemRenderer: renderItem,
+          totalHeight: totalHeight,
+          seekedOffset: seekedOffset,
+          seekedData: seekedData,
+          generation: generation,
+          unitSize: UNIT_SIZE_PX
+        }), document.getElementById('quantized-height'));
+      };
+
+      // boostrap
+      seekDoneUpdateList();
+
+    </script>
+  </body>
+</html>
